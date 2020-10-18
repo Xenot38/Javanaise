@@ -9,6 +9,7 @@
 
 package jvn;
 
+import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.rmi.server.UnicastRemoteObject;
@@ -137,14 +138,18 @@ public class JvnCoordImpl extends UnicastRemoteObject implements JvnRemoteCoord{
        }else{
            //On invalidate le serveur écrivain
            JvnRemoteServer serv = this.writer.get(joi);
-           JvnObject o;
-           if(serv.equals(js)) {
-               o = (JvnObject) serv.jvnInvalidateWriterForReader(joi);
-           }else{
-               o = (JvnObject) serv.jvnInvalidateWriter(joi);
+           JvnObject o = null;
+           try {
+               if(serv.equals(js)) {
+                   o = (JvnObject) serv.jvnInvalidateWriterForReader(joi);
+               }else{
+                   o = (JvnObject) serv.jvnInvalidateWriter(joi);
+               }
+               this.objectFromIds.replace(joi,o);
+           }catch (RemoteException e){
+               System.out.println("Connexion avec un client perdue");
            }
            //Mise a jour des maps
-           this.objectFromIds.replace(joi,o);
            this.writer.replace(joi,null);
            this.readers.get(joi).add(js);
            return this.objectFromIds.get(joi);
@@ -169,20 +174,27 @@ public class JvnCoordImpl extends UnicastRemoteObject implements JvnRemoteCoord{
        //Cas sans lecteurs mais avec écrivain
        }else if(this.readers.get(joi).isEmpty() && !(this.writer.get(joi) == null)){
            JvnRemoteServer serv = this.writer.get(joi);
-
-           JvnObject o = (JvnObject) serv.jvnInvalidateWriter(joi);
+           JvnObject o = null;
+           try{
+               o = (JvnObject) serv.jvnInvalidateWriter(joi);
+               this.objectFromIds.replace(joi,o);
+           }catch (RemoteException e){
+               System.out.println("Connexion avec un client perdue");
+           }
            //Remplacement de l'écrivain
-           this.objectFromIds.replace(joi,o);
            this.writer.replace(joi,js);
            return this.objectFromIds.get(joi);
-
        //Cas sans écrivain mais avec lecteurs
        }else{
            ArrayList<JvnRemoteServer> readersToInvalidate = this.readers.get(joi);
            //On invalidate chacun des lecteurs
            for (JvnRemoteServer s : readersToInvalidate){
                if(!s.equals(js)){
-                   s.jvnInvalidateReader(joi);
+                   try{
+                       s.jvnInvalidateReader(joi);
+                   }catch (RemoteException e){
+                       System.out.println("Connexion avec un client perdue");
+                   }
                }
            }
            //Remplacement de l'écrivain
